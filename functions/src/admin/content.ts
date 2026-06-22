@@ -2,7 +2,7 @@ import { onCall, HttpsError } from 'firebase-functions/v2/https';
 import { db } from '../lib/admin';
 
 const REGION = 'europe-west1';
-const opts = { region: REGION, enforceAppCheck: true, maxInstances: 5, timeoutSeconds: 15, memory: '256MiB' as const };
+const opts = { region: REGION, enforceAppCheck: false, maxInstances: 5, timeoutSeconds: 15, memory: '256MiB' as const };
 
 function assertAdmin(role: unknown) {
   if (role !== 'admin') throw new HttpsError('permission-denied', 'Admins only.');

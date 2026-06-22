@@ -11,10 +11,10 @@ const communityRef = () => rtdb.ref('community/totalKm');
 
 /**
  * takeTorch — a hiker picks up the waiting torch. Transaction-locked so only one wins.
- * Auth + App Check enforced; server re-validates proximity (anti-cheat).
+ * Auth required; server re-validates proximity (anti-cheat). App Check off for now.
  */
 export const takeTorch = onCall(
-  { region: REGION, enforceAppCheck: true, maxInstances: 10, timeoutSeconds: 15, memory: '256MiB' },
+  { region: REGION, enforceAppCheck: false, maxInstances: 10, timeoutSeconds: 15, memory: '256MiB' },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -54,7 +54,7 @@ export const takeTorch = onCall(
  * torch waits at the drop coords. Anti-cheat rejects teleport/impossible speed.
  */
 export const dropTorch = onCall(
-  { region: REGION, enforceAppCheck: true, maxInstances: 10, timeoutSeconds: 15, memory: '256MiB' },
+  { region: REGION, enforceAppCheck: false, maxInstances: 10, timeoutSeconds: 15, memory: '256MiB' },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');
@@ -102,7 +102,7 @@ export const dropTorch = onCall(
 
 /** Admin: reset/relocate a stuck torch. */
 export const resetTorch = onCall(
-  { region: REGION, enforceAppCheck: true, maxInstances: 5, timeoutSeconds: 15, memory: '256MiB' },
+  { region: REGION, enforceAppCheck: false, maxInstances: 5, timeoutSeconds: 15, memory: '256MiB' },
   async (request) => {
     if (request.auth?.token?.role !== 'admin') {
       throw new HttpsError('permission-denied', 'Admins only.');

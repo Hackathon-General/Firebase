@@ -12,7 +12,7 @@ const REGION = 'europe-west1';
  * trail content so the app reads everything live. Admin-claim guarded.
  */
 export const seedContent = onCall(
-  { region: REGION, enforceAppCheck: true, maxInstances: 2, timeoutSeconds: 60, memory: '256MiB' },
+  { region: REGION, enforceAppCheck: false, maxInstances: 2, timeoutSeconds: 60, memory: '256MiB' },
   async (request) => {
     if (request.auth?.token?.role !== 'admin') {
       throw new HttpsError('permission-denied', 'Admins only.');
