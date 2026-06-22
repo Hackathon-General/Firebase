@@ -79,18 +79,30 @@ export const ingest = onRequest(
     if (lastSeen.size > 5000) lastSeen.clear();
 
     // --- Save to Firebase RTDB (clients can't spoof source:"sensor" via rules) ---
-    await rtdb.ref(`live/${deviceId}`).set({
-      lat: latitude,
-      lng: longitude,
-      speed: Number.isFinite(Number(speed_kmh)) ? Number(speed_kmh) : null,
-      heading: Number.isFinite(Number(heading_deg)) ? Number(heading_deg) : null,
-      utc: typeof utc === 'string' ? utc : null,
-      ts: now,
-      source: 'sensor',
-      name: `חיישן ${deviceId}`,
-    });
+    // Guard the write so the function NEVER hangs to a 504: if RTDB is slow/unreachable,
+    // fail fast with a clear error instead of timing out the whole instance.
+    try {
+      const write = rtdb.ref(`live/${deviceId}`).set({
+        lat: latitude,
+        lng: longitude,
+        speed: Number.isFinite(Number(speed_kmh)) ? Number(speed_kmh) : null,
+        heading: Number.isFinite(Number(heading_deg)) ? Number(heading_deg) : null,
+        utc: typeof utc === 'string' ? utc : null,
+        ts: now,
+        source: 'sensor',
+        name: `חיישן ${deviceId}`,
+      });
+      const timeout = new Promise((_, reject) =>
+        setTimeout(() => reject(new Error('rtdb-write-timeout')), 5000)
+      );
+      await Promise.race([write, timeout]);
+    } catch (e) {
+      logger.error('iot ingest: rtdb write failed', { deviceId, err: String(e) });
+      res.status(500).json({ ok: false, error: 'db-write-failed' });
+      return;
+    }
 
-    logger.info('iot ingest', { deviceId });
+    logger.info('iot ingest ok', { deviceId });
     res.status(200).json({ ok: true });
   }
 );
