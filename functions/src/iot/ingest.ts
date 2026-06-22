@@ -5,11 +5,10 @@ import { rtdb } from '../lib/admin';
 import { IOT_SECRET } from '../lib/secrets';
 
 const REGION = 'europe-west1';
-const MAX_SKEW_MS = 5 * 60 * 1000; // reject stale/replayed payloads older than 5 min
 
-// Simple in-instance per-device rate limit (best-effort; real limit also via maxInstances).
+// Per-device rate limit (best-effort, per warm instance; maxInstances also caps total throughput).
 const lastSeen = new Map<string, number>();
-const MIN_INTERVAL_MS = 2000;
+const MIN_INTERVAL_MS = 2000; // ≤ 1 accepted update per device per 2s; floods → 429
 
 function constantTimeEqual(a: string, b: string): boolean {
   const ba = Buffer.from(a);
@@ -19,10 +18,11 @@ function constantTimeEqual(a: string, b: string): boolean {
 }
 
 /**
- * IoT sensor ingest — shirt sensors POST positions. Secured by:
- *  - Authorization: Bearer <IOT_SECRET>  (constant-time compare), OR
- *  - X-Signature: HMAC-SHA256(secret, `${ts}.${rawBody}`)  (replay-protected by ts)
- * Writes to RTDB live/{deviceId} with source:"sensor" (clients can never spoof this path).
+ * IoT sensor ingest — POST { id, utc, lat, lon, speed_kmh, heading_deg }.
+ * Secured by Authorization: Bearer <IOT_SECRET> (constant-time) or HMAC X-Signature.
+ * DDoS-safe: per-device rate limit (429), payload validation, maxInstances cap, bounded memory.
+ * Saves to RTDB live/{id} with source:"sensor" (clients can never spoof this path via rules).
+ * Returns { ok: true } / { ok: false, error }.
  */
 export const ingest = onRequest(
   { region: REGION, secrets: [IOT_SECRET], maxInstances: 5, concurrency: 40, timeoutSeconds: 10, memory: '256MiB', cors: false },
@@ -32,9 +32,11 @@ export const ingest = onRequest(
       return;
     }
     const secret = IOT_SECRET.value();
-    const { deviceId, lat, lng, speed, ts } = req.body ?? {};
+    // Sensor payload: { id, utc, lat, lon, speed_kmh, heading_deg }
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const { id, utc, lat, lon, speed_kmh, heading_deg } = body;
 
-    // --- Auth: bearer token OR HMAC signature ---
+    // --- Auth: Authorization: Bearer <IOT_SECRET> (constant-time), or HMAC X-Signature ---
     const authHeader = String(req.get('authorization') ?? '');
     const bearer = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : '';
     const sig = String(req.get('x-signature') ?? '');
@@ -43,44 +45,47 @@ export const ingest = onRequest(
     if (bearer && constantTimeEqual(bearer, secret)) {
       authed = true;
     } else if (sig) {
-      const expected = createHmac('sha256', secret)
-        .update(`${ts}.${JSON.stringify(req.body)}`)
-        .digest('hex');
+      const expected = createHmac('sha256', secret).update(JSON.stringify(body)).digest('hex');
       authed = constantTimeEqual(sig, expected);
     }
     if (!authed) {
-      res.status(401).json({ error: 'unauthorized' });
+      res.status(401).json({ ok: false, error: 'unauthorized' });
       return;
     }
 
     // --- Payload validation ---
+    const deviceId = typeof id === 'string' ? id.trim() : '';
+    const latitude = Number(lat);
+    const longitude = Number(lon);
     if (
-      typeof deviceId !== 'string' ||
-      typeof lat !== 'number' ||
-      typeof lng !== 'number' ||
-      typeof ts !== 'number'
+      !deviceId ||
+      !Number.isFinite(latitude) || !Number.isFinite(longitude) ||
+      latitude < -90 || latitude > 90 || longitude < -180 || longitude > 180 ||
+      (latitude === 0 && longitude === 0) // sensor not yet GPS-locked
     ) {
-      res.status(400).json({ error: 'invalid-payload' });
+      res.status(400).json({ ok: false, error: 'invalid-payload' });
       return;
     }
-    // Replay / stale protection.
-    if (Math.abs(Date.now() - ts) > MAX_SKEW_MS) {
-      res.status(400).json({ error: 'stale-timestamp' });
-      return;
-    }
-    // Per-device rate limit.
-    const prev = lastSeen.get(deviceId) ?? 0;
-    if (Date.now() - prev < MIN_INTERVAL_MS) {
-      res.status(429).json({ error: 'rate-limited' });
-      return;
-    }
-    lastSeen.set(deviceId, Date.now());
 
+    // --- DDoS / cost protection: per-device rate limit (drop floods) ---
+    const now = Date.now();
+    const prev = lastSeen.get(deviceId) ?? 0;
+    if (now - prev < MIN_INTERVAL_MS) {
+      res.status(429).json({ ok: false, error: 'rate-limited' });
+      return;
+    }
+    lastSeen.set(deviceId, now);
+    // Bound the in-memory map so a flood of distinct ids can't grow it unboundedly.
+    if (lastSeen.size > 5000) lastSeen.clear();
+
+    // --- Save to Firebase RTDB (clients can't spoof source:"sensor" via rules) ---
     await rtdb.ref(`live/${deviceId}`).set({
-      lat,
-      lng,
-      speed: typeof speed === 'number' ? speed : null,
-      ts,
+      lat: latitude,
+      lng: longitude,
+      speed: Number.isFinite(Number(speed_kmh)) ? Number(speed_kmh) : null,
+      heading: Number.isFinite(Number(heading_deg)) ? Number(heading_deg) : null,
+      utc: typeof utc === 'string' ? utc : null,
+      ts: now,
       source: 'sensor',
       name: `חיישן ${deviceId}`,
     });
