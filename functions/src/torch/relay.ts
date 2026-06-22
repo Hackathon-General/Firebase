@@ -80,6 +80,12 @@ export const dropTorch = onCall(
     const km = seg.ok ? Math.min(serverKm, Number(segmentKm) || serverKm) : 0;
     if (!seg.ok) {
       logger.warn('torch drop rejected segment (anti-cheat)', { uid, ...seg });
+      // Record for the admin anti-cheat view.
+      await db.collection('flags').add({
+        uid, type: 'torch-segment', reason: seg.reason ?? 'invalid',
+        distanceM: seg.distanceM, speedMps: seg.speedMps,
+        from: { lat: torch.lat, lng: torch.lng }, to: { lat, lng }, at: Date.now(),
+      }).catch(() => {});
     }
 
     const now = Date.now();
