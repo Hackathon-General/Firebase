@@ -10,7 +10,7 @@ const REGION = 'europe-west1';
  * fan out PERSONALIZED FCM (v1) push notifications (greeting them by name). Bounded; no retry.
  */
 export const onAlertCreated = onDocumentCreated(
-  { region: REGION, document: 'alerts/{alertId}', maxInstances: 5, concurrency: 1, timeoutSeconds: 60, memory: '256MiB', retry: false },
+  { region: REGION, document: 'alerts/{alertId}', maxInstances: 5, concurrency: 1, timeoutSeconds: 60, memory: '256MiB', cpu: 0.25, retry: false },
   async (event) => {
     const alert = event.data?.data();
     if (!alert || typeof alert.lat !== 'number') return;

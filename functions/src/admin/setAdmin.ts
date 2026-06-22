@@ -8,7 +8,7 @@ const REGION = 'europe-west1';
  * (App Check enforced). The first admin is bootstrapped via scripts/bootstrap-admin.ts.
  */
 export const setAdmin = onCall(
-  { region: REGION, enforceAppCheck: false, maxInstances: 3, timeoutSeconds: 15, memory: '256MiB' },
+  { region: REGION, enforceAppCheck: false, maxInstances: 3, timeoutSeconds: 15, memory: '256MiB', cpu: 0.25 },
   async (request) => {
     if (request.auth?.token?.role !== 'admin') {
       throw new HttpsError('permission-denied', 'Admins only.');
