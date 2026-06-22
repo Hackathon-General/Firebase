@@ -8,4 +8,7 @@ export { ingest } from './iot/ingest';
 export { takeTorch, dropTorch, resetTorch } from './torch/relay';
 export { onAlertCreated } from './geofence/triggers';
 export { completeTrail } from './missions/takeHome';
-export { onUserCreate } from './auth/onCreate';
+// NOTE: onUserCreate (beforeUserCreated) removed — blocking auth functions require GCIP,
+// which this project doesn't use. The users/{uid} profile is created client-side on first
+// sign-in (see AuthProvider.ensureProfile); rules allow a user to create only their own doc
+// with role:'user'. setAdmin (server) is the only way role becomes 'admin'.
