@@ -39,8 +39,8 @@ export const updateContent = onCall(opts, async (request) => {
   assertAdmin(request.auth?.token?.role);
   const doc = request.data?.doc;
   const patch = request.data?.patch;
-  if (!['event', 'routes', 'site'].includes(doc)) {
-    throw new HttpsError('invalid-argument', 'doc must be event|routes|site.');
+  if (!['event', 'routes', 'site', 'info'].includes(doc)) {
+    throw new HttpsError('invalid-argument', 'doc must be event|routes|site|info.');
   }
   if (!patch || typeof patch !== 'object') {
     throw new HttpsError('invalid-argument', 'patch object required.');

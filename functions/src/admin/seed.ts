@@ -4,6 +4,7 @@ import stationsData from '../seed-data/stations.json';
 import events from '../seed-data/events.json';
 import routes from '../seed-data/routes.json';
 import he from '../seed-data/he.json';
+import info from '../seed-data/info.json';
 
 const REGION = 'europe-west1';
 
@@ -31,6 +32,7 @@ export const seedContent = onCall(
       nav: (he as any).nav, actions: (he as any).actions, ui: (he as any).ui,
       race: (he as any).race, footer: (he as any).footer, credit: (he as any).credit, updatedAt: now,
     }, { merge: true });
+    batch.set(db.doc('content/info'), { ...(info as object), updatedAt: now }, { merge: true });
     await batch.commit();
 
     return { ok: true, stations: (stationsData as any).stations.length };
