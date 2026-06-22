@@ -10,7 +10,7 @@ service cloud.firestore {
     // Users: read any profile; write only your own non-privileged fields (no role/totalKm/uid).
     match /users/{uid} {
       allow read: if isSignedIn();
-      allow create: if isOwner(uid) && request.resource.data.role == 'user';
+      allow create: if isOwner(uid) && request.resource.data.role == 'user' && (!('totalKm' in request.resource.data) || request.resource.data.totalKm == 0);
       allow update: if isOwner(uid)
         && !request.resource.data.diff(resource.data)
               .affectedKeys().hasAny(['role', 'totalKm', 'uid']);
@@ -21,12 +21,12 @@ service cloud.firestore {
     match /feed/{id} {
       allow read: if isSignedIn();
       allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
-      allow update, delete: if isAdmin()
-        || (resource.data.authorId == request.auth.uid);
+      allow update: if isAdmin() || (resource.data.authorId == request.auth.uid && request.resource.data.authorId == resource.data.authorId);
+      allow delete: if isAdmin() || resource.data.authorId == request.auth.uid;
       // likes/comments subcollection
       match /comments/{cid} {
         allow read: if isSignedIn();
-        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow update: if isAdmin() || (resource.data.authorId == request.auth.uid && request.resource.data.authorId == resource.data.authorId);
         allow delete: if isAdmin() || resource.data.authorId == request.auth.uid;
       }
       match /likes/{uid} {
@@ -49,3 +49,4 @@ service cloud.firestore {
     match /{document=**} { allow read, write: if false; }
   }
 }
+
