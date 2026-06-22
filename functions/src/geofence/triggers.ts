@@ -1,13 +1,13 @@
 import { onDocumentCreated } from 'firebase-functions/v2/firestore';
 import { logger } from 'firebase-functions';
 import { db, rtdb, messaging } from '../lib/admin';
-import { isWithin } from '../lib/geo';
+import { idsInRadius, buildAlertMessage, type LivePoint } from '../lib/notifications';
 
 const REGION = 'europe-west1';
 
 /**
  * When an admin creates an alert, find users whose live position is within the radius and
- * fan out FCM (v1, via Admin SDK) push notifications to their stored tokens. Bounded + batched.
+ * fan out PERSONALIZED FCM (v1) push notifications (greeting them by name). Bounded; no retry.
  */
 export const onAlertCreated = onDocumentCreated(
   { region: REGION, document: 'alerts/{alertId}', maxInstances: 5, concurrency: 1, timeoutSeconds: 60, memory: '256MiB', retry: false },
@@ -20,44 +20,39 @@ export const onAlertCreated = onDocumentCreated(
 
     // Read current live positions (phones + sensors).
     const liveSnap = await rtdb.ref('live').get();
-    const live = (liveSnap.val() as Record<string, { lat: number; lng: number }>) || {};
+    const live = (liveSnap.val() as Record<string, LivePoint>) || {};
 
-    const affectedIds = Object.entries(live)
-      .filter(([, p]) => p && isWithin(p, center, radius))
-      .map(([id]) => id);
-
+    const affectedIds = idsInRadius(live, center, radius);
     if (affectedIds.length === 0) {
       logger.info('alert: nobody in radius', { alertId: event.params.alertId });
       return;
     }
 
-    // Look up push tokens for affected users (skip sensor ids gracefully).
-    const tokens: string[] = [];
-    await Promise.all(
+    // Build a personalized push per affected user (name from their profile).
+    const sends = await Promise.all(
       affectedIds.map(async (uid) => {
         const doc = await db.doc(`users/${uid}`).get();
         const token = doc.get('pushToken');
-        if (typeof token === 'string' && token) tokens.push(token);
+        if (typeof token !== 'string' || !token) return null;
+        const name = (doc.get('displayName') as string | undefined) ?? live[uid]?.name;
+        const msg = buildAlertMessage(event.params.alertId, alert, name);
+        return { token, ...msg };
       })
     );
 
-    if (tokens.length === 0) return;
+    const valid = sends.filter((s): s is NonNullable<typeof s> => s !== null);
+    if (valid.length === 0) return;
 
-    // FCM v1 multicast (batched in chunks of 500).
-    for (let i = 0; i < tokens.length; i += 500) {
-      const batch = tokens.slice(i, i + 500);
-      await messaging.sendEachForMulticast({
-        tokens: batch,
-        notification: {
-          title: alert.title || 'התראה מההנהלה',
-          body: alert.message || '',
-        },
-        data: {
-          url: `carmelkinneret://alert/${event.params.alertId}`,
-          audioUrl: alert.audioUrl || '',
-        },
-      });
-    }
-    logger.info('alert fan-out', { alertId: event.params.alertId, count: tokens.length });
+    await Promise.all(
+      valid.map((s) =>
+        messaging.send({
+          token: s.token,
+          notification: { title: s.title, body: s.body },
+          data: s.data,
+        }).catch((e) => logger.warn('push failed', { err: String(e) }))
+      )
+    );
+
+    logger.info('alert fan-out (personalized)', { alertId: event.params.alertId, count: valid.length });
   }
 );
