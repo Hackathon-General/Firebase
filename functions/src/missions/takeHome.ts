@@ -9,7 +9,7 @@ const REGION = 'europe-west1';
  * return matched take-home actions (e.g. visited a volunteering station → local volunteering link).
  */
 export const completeTrail = onCall(
-  { region: REGION, enforceAppCheck: true, maxInstances: 5 },
+  { region: REGION, enforceAppCheck: true, maxInstances: 5, timeoutSeconds: 15, memory: '256MiB' },
   async (request) => {
     const uid = request.auth?.uid;
     if (!uid) throw new HttpsError('unauthenticated', 'Sign in required.');

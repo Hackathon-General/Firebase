@@ -10,7 +10,7 @@ const REGION = 'europe-west1';
  * fan out FCM (v1, via Admin SDK) push notifications to their stored tokens. Bounded + batched.
  */
 export const onAlertCreated = onDocumentCreated(
-  { region: REGION, document: 'alerts/{alertId}', maxInstances: 5 },
+  { region: REGION, document: 'alerts/{alertId}', maxInstances: 5, concurrency: 1, timeoutSeconds: 60, memory: '256MiB', retry: false },
   async (event) => {
     const alert = event.data?.data();
     if (!alert || typeof alert.lat !== 'number') return;

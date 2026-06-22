@@ -25,7 +25,7 @@ function constantTimeEqual(a: string, b: string): boolean {
  * Writes to RTDB live/{deviceId} with source:"sensor" (clients can never spoof this path).
  */
 export const ingest = onRequest(
-  { region: REGION, secrets: [IOT_SECRET], maxInstances: 5, cors: false },
+  { region: REGION, secrets: [IOT_SECRET], maxInstances: 5, concurrency: 40, timeoutSeconds: 10, memory: '256MiB', cors: false },
   async (req, res) => {
     if (req.method !== 'POST') {
       res.status(405).json({ error: 'method-not-allowed' });

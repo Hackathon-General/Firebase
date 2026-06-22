@@ -8,7 +8,7 @@ const REGION = 'europe-west1';
  * Custom claim role defaults to 'user'; admins are promoted later via setAdmin.
  */
 export const onUserCreate = beforeUserCreated(
-  { region: REGION },
+  { region: REGION, maxInstances: 10, timeoutSeconds: 10, memory: '256MiB' },
   async (event) => {
     const user = event.data;
     if (!user) return;
