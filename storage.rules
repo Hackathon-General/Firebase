@@ -1,0 +1,23 @@
+rules_version = '2';
+// Photos under feed/{uid}/* writable only by that user; images only; size-capped. Read = signed-in.
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isSignedIn() { return request.auth != null; }
+
+    match /feed/{uid}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+        && request.auth.uid == uid
+        && request.resource.size < 8 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+    }
+
+    // Admin-managed station images.
+    match /stations/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    match /{allPaths=**} { allow read, write: if false; }
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "name": "carmel-kinneret-functions",
+  "version": "1.0.0",
+  "description": "Cloud Functions (2nd gen) for the Carmel-Kinneret trail ecosystem",
+  "main": "lib/index.js",
+  "engines": { "node": "22" },
+  "scripts": {
+    "build": "tsc",
+    "build:watch": "tsc --watch",
+    "serve": "npm run build && firebase emulators:start --only functions,firestore,database,auth,storage",
+    "shell": "npm run build && firebase functions:shell",
+    "deploy": "firebase deploy --only functions",
+    "logs": "firebase functions:log",
+    "test": "jest",
+    "lint": "eslint --ext .ts src"
+  },
+  "dependencies": {
+    "firebase-admin": "^13.10.0",
+    "firebase-functions": "^7.2.5"
+  },
+  "devDependencies": {
+    "@types/jest": "^29.5.14",
+    "@types/node": "^22.10.0",
+    "firebase-functions-test": "^3.5.0",
+    "jest": "^29.7.0",
+    "ts-jest": "^29.2.5",
+    "typescript": "^5.7.3"
+  },
+  "private": true
+}

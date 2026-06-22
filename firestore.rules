@@ -1,0 +1,51 @@
+rules_version = '2';
+// Carmel-Kinneret — deny-by-default. Privileged writes go ONLY through Cloud Functions (Admin SDK).
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function isAdmin() { return isSignedIn() && request.auth.token.role == 'admin'; }
+    function isOwner(uid) { return isSignedIn() && request.auth.uid == uid; }
+
+    // Users: read any profile; write only your own non-privileged fields (no role/totalKm/uid).
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      allow create: if isOwner(uid) && request.resource.data.role == 'user';
+      allow update: if isOwner(uid)
+        && !request.resource.data.diff(resource.data)
+              .affectedKeys().hasAny(['role', 'totalKm', 'uid']);
+      allow write: if isAdmin();
+    }
+
+    // Community feed: read when signed in; create your own post; edit/delete = author or admin.
+    match /feed/{id} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow update, delete: if isAdmin()
+        || (resource.data.authorId == request.auth.uid);
+      // likes/comments subcollection
+      match /comments/{cid} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+        allow delete: if isAdmin() || resource.data.authorId == request.auth.uid;
+      }
+      match /likes/{uid} {
+        allow read: if isSignedIn();
+        allow write: if isOwner(uid);
+      }
+    }
+
+    // Stations / NFRs / alerts / take-home rules / event: read all; write admin only.
+    match /stations/{id}       { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /nfrs/{id}           { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /alerts/{id}         { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /takeHomeRules/{id}  { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /event/{id}          { allow read: if isSignedIn(); allow write: if isAdmin(); }
+
+    // Leaderboard: read only — written by functions via Admin SDK (bypasses rules).
+    match /leaderboard/{id}    { allow read: if isSignedIn(); allow write: if false; }
+
+    // Everything else denied.
+    match /{document=**} { allow read, write: if false; }
+  }
+}
