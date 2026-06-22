@@ -37,6 +37,7 @@ service cloud.firestore {
 
     // Stations / NFRs / alerts / take-home rules / event: read all; write admin only.
     match /stations/{id}       { allow read: if isSignedIn(); allow write: if isAdmin(); }
+    match /content/{id}        { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /nfrs/{id}           { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /alerts/{id}         { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /takeHomeRules/{id}  { allow read: if isSignedIn(); allow write: if isAdmin(); }

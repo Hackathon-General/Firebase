@@ -1,0 +1,42 @@
+{
+  "_source": "Waze ll= coordinates scraped verbatim from walkPage.html / shlihimHtml.html / ulrtaPage.html (carmel-kinneret.org race subpages, 2026-06-22). Ordered west→east (Carmel→Kinneret).",
+  "_note": "These are the official route waypoints used for Waze navigation; used to draw the trail polyline + start/finish markers on the map.",
+  "waypoints": [
+    { "name": "יגור - סטופמרקט (זינוק)", "lat": 32.749490, "lng": 35.070269 },
+    { "name": "זאבידת", "lat": 32.731031, "lng": 35.130195 },
+    { "name": "מעיין הסוסים", "lat": 32.756826, "lng": 35.174414 },
+    { "name": "ציפורי", "lat": 32.755934, "lng": 35.275551 },
+    { "name": "יער בית קשת", "lat": 32.752471, "lng": 35.384258 },
+    { "name": "שיבלי", "lat": 32.694189, "lng": 35.384983 },
+    { "name": "הר תבור / כפר קיש", "lat": 32.701987, "lng": 35.350977 },
+    { "name": "צומת גזית", "lat": 32.660665, "lng": 35.439007 },
+    { "name": "מצפה אודי", "lat": 32.682394, "lng": 35.530283 },
+    { "name": "חוף צמח (סיום)", "lat": 32.704014, "lng": 35.587757 }
+  ],
+  "relayLegs": [
+    { "n": 1, "from": "יגור-סטופמרקט", "to": "זאבידת", "km": 11.8, "fromLat": 32.749490, "fromLng": 35.070269, "toLat": 32.731031, "toLng": 35.130195 },
+    { "n": 2, "from": "זאבידת", "to": "מעיין הסוסים", "km": 7.2, "fromLat": 32.731031, "fromLng": 35.130195, "toLat": 32.756826, "toLng": 35.174414 },
+    { "n": 3, "from": "מעיין הסוסים", "to": "ציפורי", "km": 15.32, "fromLat": 32.756826, "fromLng": 35.174414, "toLat": 32.755934, "toLng": 35.275551 },
+    { "n": 4, "from": "ציפורי", "to": "יער בית קשת", "km": 15.32, "fromLat": 32.755934, "fromLng": 35.275551, "toLat": 32.752471, "toLng": 35.384258 },
+    { "n": 5, "from": "יער בית קשת", "to": "שיבלי", "km": 7.78, "fromLat": 32.752471, "fromLng": 35.384258, "toLat": 32.694189, "toLng": 35.384983 },
+    { "n": 6, "from": "שיבלי", "to": "כפר קיש", "km": 8.8, "fromLat": 32.694189, "fromLng": 35.384983, "toLat": 32.701987, "toLng": 35.350977 },
+    { "n": 7, "from": "כפר קיש", "to": "מצפה אודי", "km": 13.2, "fromLat": 32.701987, "fromLng": 35.350977, "toLat": 32.682394, "toLng": 35.530283 },
+    { "n": 8, "from": "מצפה אודי", "to": "חוף צמח", "km": 8.5, "fromLat": 32.682394, "fromLng": 35.530283, "toLat": 32.704014, "toLng": 35.587757 }
+  ],
+  "walkRoutes": [
+    { "name": "מסלול קצר", "km": 5, "start": "צומת גזית", "finish": "כפר קיש", "startLat": 32.660665, "startLng": 35.439007 },
+    { "name": "מסלול בינוני", "km": 10, "start": "הר תבור", "finish": "כפר קיש", "startLat": 32.701987, "startLng": 35.350977 },
+    { "name": "מסלול ארוך", "km": 15, "start": "יער בית קשת", "finish": "כפר קיש", "startLat": 32.752471, "startLng": 35.384258 }
+  ],
+  "colors": {
+    "_note": "Confirmed consistent across race pages",
+    "terracotta": "#D68C45",
+    "gold": "#FFCF56",
+    "orange": "#FF8044",
+    "cream": "#FEF6ED",
+    "creamAlt": "#FEF3E5",
+    "danger": "#DF3131",
+    "success": "#0DC143",
+    "ink": "#212121"
+  }
+}

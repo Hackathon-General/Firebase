@@ -4,6 +4,8 @@
  * Deploy revision: r2 (full redeploy)
  */
 export { setAdmin } from './admin/setAdmin';
+export { upsertStation, deleteStation, updateContent } from './admin/content';
+export { seedContent } from './admin/seed';
 export { ingest } from './iot/ingest';
 export { takeTorch, dropTorch, resetTorch } from './torch/relay';
 export { onAlertCreated } from './geofence/triggers';
