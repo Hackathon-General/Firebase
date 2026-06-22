@@ -9,6 +9,7 @@ export { seedContent } from './admin/seed';
 export { ingest } from './iot/ingest';
 export { takeTorch, dropTorch, resetTorch } from './torch/relay';
 export { onAlertCreated } from './geofence/triggers';
+export { onSosCreated } from './sos/triggers';
 export { completeTrail } from './missions/takeHome';
 // NOTE: onUserCreate (beforeUserCreated) removed — blocking auth functions require GCIP,
 // which this project doesn't use. The users/{uid} profile is created client-side on first

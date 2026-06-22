@@ -43,6 +43,12 @@ service cloud.firestore {
     match /takeHomeRules/{id}  { allow read: if isSignedIn(); allow write: if isAdmin(); }
     match /flags/{id}          { allow read: if isAdmin(); allow write: if false; } // anti-cheat, functions only
 
+    // SOS events: a signed-in user logs their own distress call; admins read & resolve (the חמ"ל log).
+    match /sosEvents/{id} {
+      allow create: if isSignedIn() && request.resource.data.authorId == request.auth.uid;
+      allow read, update: if isAdmin();
+    }
+
     // Form submissions (registration / volunteer / team-finder / contact):
     // any signed-in user can submit; only admins read & manage (the inbox).
     match /forms/{id} {
