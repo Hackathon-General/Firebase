@@ -50,7 +50,9 @@ gcloud compute firewall-rules create "${NAME}-allow-http" \
   && say "Firewall created." || say "Firewall already exists (ok)."
 
 # 3) Startup-script (installs node, writes relay.js + systemd unit, starts it on :80).
-read -r -d '' STARTUP <<STARTUP_EOF || true
+#    Written to a FILE and passed via --metadata-from-file so gcloud doesn't try to parse
+#    the JS commas/colons as dict syntax (that's what broke --metadata=startup-script=...).
+cat > /tmp/ck-startup.sh <<STARTUP_EOF
 #!/bin/bash
 set -e
 if ! command -v node >/dev/null 2>&1; then
@@ -116,7 +118,7 @@ gcloud compute instances create "$NAME" \
   --network-tier=STANDARD \
   --tags=http-server \
   --address="$STATIC_IP" \
-  --metadata=startup-script="$STARTUP" \
+  --metadata-from-file=startup-script=/tmp/ck-startup.sh \
   --quiet --async
 say "VM create submitted."
 
