@@ -1,18 +1,20 @@
 #!/usr/bin/env bash
 # ============================================================================
-# SELF-CONTAINED one-shot GCP deploy for the Carmel-Kinneret HTTP relay.
+# SELF-CONTAINED + NON-INTERACTIVE one-shot GCP deploy for the CK HTTP relay.
 # relay.js is embedded below — this is the ONLY file you need.
 #
-# Creates: static IP + firewall (TCP 80) + free e2-micro VM that auto-installs
-# Node, writes relay.js, and runs it on port 80 via systemd (survives reboot).
+# Hardened so it NEVER hangs:
+#   - enables the Compute API first (the usual "nothing happens" cause is the
+#     interactive 'enable API? (y/N)' prompt on the first compute call)
+#   - --quiet everywhere (no y/N prompts)
+#   - progress echo before every step so you always see where it is
+#   - creates the VM with --async (returns immediately; we poll for the IP)
 #
-# RUN (in GCP Cloud Shell):
-#   1) gcloud config set project carmel-kinneret
-#   2) (optional) edit IOT_SECRET / REGION / ZONE below
-#   3) bash gcp-deploy-standalone.sh
-#   4) it prints the PUBLIC URL → give http://<IP>/ to the sensor team.
+# RUN (GCP Cloud Shell):
+#   bash gcp-deploy-standalone.sh
+# Then it prints  http://<IP>/  for the sensor team.
 # ============================================================================
-set -euo pipefail
+set -uo pipefail   # NOTE: no -e, so one soft failure can't silently abort
 
 # ---- EDIT IF NEEDED ----
 IOT_SECRET="ae8d995a2d097e75d27c550c76d0865d7d3ce762be388add02b73b130003b574"
@@ -22,18 +24,32 @@ ZONE="us-central1-a"
 NAME="ck-relay"
 INGEST_URL="https://ingest-ossscobabq-ew.a.run.app"
 PROJECT="$(gcloud config get-value project 2>/dev/null)"
-echo "Project: $PROJECT   Zone: $ZONE"
+export CLOUDSDK_CORE_DISABLE_PROMPTS=1   # belt-and-suspenders: never prompt
 
-# 1) Static external IP — STANDARD tier (free egress allowance), free while attached to a VM.
-gcloud compute addresses create "${NAME}-ip" --region="$REGION" --network-tier=STANDARD 2>/dev/null || true
-STATIC_IP="$(gcloud compute addresses describe "${NAME}-ip" --region="$REGION" --format='get(address)')"
-echo "Static IP: $STATIC_IP"
+say() { echo ">>> [$(date +%H:%M:%S)] $*"; }
+
+say "Project: ${PROJECT:-<none>}   Zone: $ZONE"
+[ -z "$PROJECT" ] && { echo "ERROR: no project set → run: gcloud config set project carmel-kinneret"; exit 1; }
+
+# 0) Enable the Compute Engine API (THE usual hang). Idempotent; ~30-60s first time.
+say "Enabling compute.googleapis.com (can take ~1 min the first time)…"
+gcloud services enable compute.googleapis.com --quiet
+say "Compute API ready."
+
+# 1) Static external IP — STANDARD tier (free), free while attached to a VM.
+say "Reserving static IP ${NAME}-ip…"
+gcloud compute addresses create "${NAME}-ip" --region="$REGION" --network-tier=STANDARD --quiet 2>/dev/null \
+  && say "IP created." || say "IP already exists (ok)."
+STATIC_IP="$(gcloud compute addresses describe "${NAME}-ip" --region="$REGION" --format='get(address)' 2>/dev/null)"
+say "Static IP = ${STATIC_IP:-<pending>}"
 
 # 2) Firewall: inbound TCP 80 from anywhere → instances tagged http-server.
+say "Creating firewall rule ${NAME}-allow-http (tcp:80)…"
 gcloud compute firewall-rules create "${NAME}-allow-http" \
-  --allow=tcp:80 --source-ranges=0.0.0.0/0 --target-tags=http-server 2>/dev/null || true
+  --allow=tcp:80 --source-ranges=0.0.0.0/0 --target-tags=http-server --quiet 2>/dev/null \
+  && say "Firewall created." || say "Firewall already exists (ok)."
 
-# 3) Build the VM startup-script (installs node, writes relay.js + systemd unit, starts it).
+# 3) Startup-script (installs node, writes relay.js + systemd unit, starts it on :80).
 read -r -d '' STARTUP <<STARTUP_EOF || true
 #!/bin/bash
 set -e
@@ -46,71 +62,29 @@ cat > /opt/ck-relay/relay.js <<'RELAY_EOF'
 const http = require('http');
 const https = require('https');
 const { URL } = require('url');
-
 const PORT = Number(process.env.PORT || 8080);
 const INGEST_URL = process.env.INGEST_URL || 'https://ingest-ossscobabq-ew.a.run.app';
 const IOT_SECRET = process.env.IOT_SECRET;
-
-if (!IOT_SECRET) {
-  console.error('ERROR: set IOT_SECRET env var.');
-  process.exit(1);
-}
-
+if (!IOT_SECRET) { console.error('ERROR: set IOT_SECRET'); process.exit(1); }
 const target = new URL(INGEST_URL);
-
 function forward(bodyBuf) {
   return new Promise((resolve) => {
-    const req = https.request(
-      {
-        hostname: target.hostname,
-        path: target.pathname || '/',
-        port: 443,
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Content-Length': Buffer.byteLength(bodyBuf),
-          Authorization: 'Bearer ' + IOT_SECRET,
-        },
-      },
-      (res) => {
-        let data = '';
-        res.on('data', (c) => (data += c));
-        res.on('end', () => resolve({ status: res.statusCode || 502, body: data }));
-      }
-    );
-    req.on('error', (e) => resolve({ status: 502, body: JSON.stringify({ ok: false, error: String(e) }) }));
-    req.write(bodyBuf);
-    req.end();
+    const req = https.request({
+      hostname: target.hostname, path: target.pathname || '/', port: 443, method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(bodyBuf), Authorization: 'Bearer ' + IOT_SECRET },
+    }, (res) => { let d=''; res.on('data',c=>d+=c); res.on('end',()=>resolve({status:res.statusCode||502,body:d})); });
+    req.on('error', (e) => resolve({ status: 502, body: JSON.stringify({ ok:false, error:String(e) }) }));
+    req.write(bodyBuf); req.end();
   });
 }
-
 const server = http.createServer((req, res) => {
-  if (req.method === 'GET') {
-    res.writeHead(200, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: true, relay: 'carmel-kinneret', target: INGEST_URL }));
-    return;
-  }
-  if (req.method !== 'POST') {
-    res.writeHead(405, { 'Content-Type': 'application/json' });
-    res.end(JSON.stringify({ ok: false, error: 'method-not-allowed' }));
-    return;
-  }
-  const chunks = [];
-  let size = 0;
-  req.on('data', (c) => { size += c.length; if (size > 8192) req.destroy(); else chunks.push(c); });
-  req.on('end', async () => {
-    const bodyBuf = Buffer.concat(chunks);
-    const out = await forward(bodyBuf);
-    res.writeHead(out.status, { 'Content-Type': 'application/json' });
-    res.end(out.body);
-    console.log(new Date().toISOString() + ' ' + req.socket.remoteAddress + ' -> ' + out.status + ' ' + out.body);
-  });
+  if (req.method === 'GET') { res.writeHead(200,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:true,relay:'carmel-kinneret',target:INGEST_URL})); return; }
+  if (req.method !== 'POST') { res.writeHead(405,{'Content-Type':'application/json'}); res.end(JSON.stringify({ok:false,error:'method-not-allowed'})); return; }
+  const chunks=[]; let size=0;
+  req.on('data',(c)=>{ size+=c.length; if(size>8192) req.destroy(); else chunks.push(c); });
+  req.on('end', async () => { const b=Buffer.concat(chunks); const out=await forward(b); res.writeHead(out.status,{'Content-Type':'application/json'}); res.end(out.body); console.log(new Date().toISOString()+' '+req.socket.remoteAddress+' -> '+out.status+' '+out.body); });
 });
-
-server.listen(PORT, () => {
-  console.log('HTTP->HTTPS relay listening on http://0.0.0.0:' + PORT);
-  console.log('Forwarding to ' + INGEST_URL);
-});
+server.listen(PORT, () => { console.log('relay on :'+PORT+' -> '+INGEST_URL); });
 RELAY_EOF
 cat > /etc/systemd/system/ck-relay.service <<UNIT_EOF
 [Unit]
@@ -132,10 +106,8 @@ systemctl daemon-reload
 systemctl enable --now ck-relay
 STARTUP_EOF
 
-# 4) Create the FREE-TIER e2-micro VM. Cost-safe flags:
-#    - e2-micro in us-{west1,central1,east1}  → Always-Free compute
-#    - pd-standard 30GB                        → within the 30GB Always-Free disk
-#    - STANDARD network tier                   → free egress allowance (1GB/mo N.America)
+# 4) Create the FREE-TIER e2-micro VM — --async so this command returns immediately.
+say "Creating e2-micro VM '$NAME' (async; returns right away)…"
 gcloud compute instances create "$NAME" \
   --zone="$ZONE" \
   --machine-type=e2-micro \
@@ -144,24 +116,26 @@ gcloud compute instances create "$NAME" \
   --network-tier=STANDARD \
   --tags=http-server \
   --address="$STATIC_IP" \
-  --metadata=startup-script="$STARTUP"
+  --metadata=startup-script="$STARTUP" \
+  --quiet --async
+say "VM create submitted."
 
 echo ""
 echo "============================================================"
-echo " Relay deploying (~2 min to boot). Sensor team URL:"
+echo " Relay deploying. The VM boots + installs in ~2-3 min."
+echo " Sensor team URL (static, never changes):"
 echo ""
 echo "     http://${STATIC_IP}/"
 echo ""
-echo " Verify once up:"
-echo "   curl -X POST http://${STATIC_IP}/ -H 'Content-Type: application/json' \\"
-echo "     -d '{\"id\":\"probe\",\"lat\":32.72,\"lon\":35.27,\"speed_kmh\":5}'"
-echo "   # -> {\"ok\":true}  and a sensor pin appears on the admin God-Mode map"
-echo "============================================================"
+echo " Watch it come up (run this; repeat until you get {\"ok\":true}):"
+echo "     curl -m 5 http://${STATIC_IP}/"
 echo ""
-echo " COST: \$0 — e2-micro + 30GB pd-standard + STANDARD tier are Always-Free."
-echo " If you ever DELETE the VM, also release the IP so it doesn't bill:"
-echo "   gcloud compute addresses delete ${NAME}-ip --region=${REGION}"
-echo " Full teardown (removes everything):"
-echo "   gcloud compute instances delete ${NAME} --zone=${ZONE} -q && \\"
-echo "   gcloud compute addresses delete ${NAME}-ip --region=${REGION} -q && \\"
+echo " Test a sensor reading:"
+echo "     curl -X POST http://${STATIC_IP}/ -H 'Content-Type: application/json' \\"
+echo "       -d '{\"id\":\"probe\",\"lat\":32.72,\"lon\":35.27,\"speed_kmh\":5}'"
+echo "============================================================"
+echo " COST: \$0 (e2-micro + 30GB pd-standard + STANDARD tier = Always-Free)."
+echo " Teardown:"
+echo "   gcloud compute instances delete $NAME --zone=$ZONE -q"
+echo "   gcloud compute addresses delete ${NAME}-ip --region=$REGION -q"
 echo "   gcloud compute firewall-rules delete ${NAME}-allow-http -q"
